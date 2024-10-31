@@ -67,3 +67,38 @@
         (ok property-id)
     )
 )
+
+;; Transfer property
+(define-public (transfer-property (property-id uint) (recipient principal))
+    (let
+        (
+            (property (unwrap! (map-get? properties { property-id: property-id }) ERR-PROPERTY-NOT-FOUND))
+            (caller tx-sender)
+        )
+        ;; Verify ownership
+        (asserts! (is-eq (get owner property) caller) ERR-NOT-AUTHORIZED)
+
+        ;; Update ownership
+        (map-set properties
+            { property-id: property-id }
+            (merge property {
+                owner: recipient,
+                last-transfer-date: block-height
+            })
+        )
+
+        ;; Record in history
+        (map-set property-history
+            { property-id: property-id, transaction-id: (var-get next-transaction-id) }
+            {
+                from: caller,
+                to: recipient,
+                timestamp: block-height,
+                transaction-type: "TRANSFER"
+            }
+        )
+
+        (var-set next-transaction-id (+ (var-get next-transaction-id) u1))
+        (ok true)
+    )
+)
