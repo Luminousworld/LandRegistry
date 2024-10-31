@@ -1,30 +1,128 @@
+;; Land Registry Smart Contract
+;; Implements property registration, ownership verification, and transfer functionality
 
-;; title: registry
-;; version:
-;; summary:
-;; description:
+;; Data Maps
+(define-map properties
+    { property-id: uint }
+    {
+        owner: principal,
+        metadata-url: (string-utf8 256),
+        registration-date: uint,
+        last-transfer-date: uint,
+        is-active: bool
+    }
+)
 
-;; traits
-;;
+(define-map property-history
+    { property-id: uint, transaction-id: uint }
+    {
+        from: principal,
+        to: principal,
+        timestamp: uint,
+        transaction-type: (string-utf8 20)
+    }
+)
 
-;; token definitions
-;;
+;; Data Variables
+(define-data-var next-property-id uint u1)
+(define-data-var next-transaction-id uint u1)
 
-;; constants
-;;
+;; Error constants
+(define-constant ERR-NOT-AUTHORIZED (err u100))
+(define-constant ERR-PROPERTY-NOT-FOUND (err u101))
+(define-constant ERR-INVALID-PROPERTY (err u102))
 
-;; data vars
-;;
+;; Register new property
+(define-public (register-property (metadata-url (string-utf8 256)))
+    (let
+        (
+            (property-id (var-get next-property-id))
+            (caller tx-sender)
+        )
+        (map-set properties
+            { property-id: property-id }
+            {
+                owner: caller,
+                metadata-url: metadata-url,
+                registration-date: block-height,
+                last-transfer-date: block-height,
+                is-active: true
+            }
+        )
 
-;; data maps
-;;
+        ;; Record in history
+        (map-set property-history
+            { property-id: property-id, transaction-id: (var-get next-transaction-id) }
+            {
+                from: caller,
+                to: caller,
+                timestamp: block-height,
+                transaction-type: "REGISTRATION"
+            }
+        )
 
-;; public functions
-;;
+        ;; Increment IDs
+        (var-set next-property-id (+ property-id u1))
+        (var-set next-transaction-id (+ (var-get next-transaction-id) u1))
+        (ok property-id)
+    )
+)
 
-;; read only functions
-;;
+;; Transfer property
+(define-public (transfer-property (property-id uint) (recipient principal))
+    (let
+        (
+            (property (unwrap! (map-get? properties { property-id: property-id }) ERR-PROPERTY-NOT-FOUND))
+            (caller tx-sender)
+        )
+        ;; Verify ownership
+        (asserts! (is-eq (get owner property) caller) ERR-NOT-AUTHORIZED)
 
-;; private functions
-;;
+        ;; Update ownership
+        (map-set properties
+            { property-id: property-id }
+            (merge property {
+                owner: recipient,
+                last-transfer-date: block-height
+            })
+        )
 
+        ;; Record in history
+        (map-set property-history
+            { property-id: property-id, transaction-id: (var-get next-transaction-id) }
+            {
+                from: caller,
+                to: recipient,
+                timestamp: block-height,
+                transaction-type: "TRANSFER"
+            }
+        )
+
+        (var-set next-transaction-id (+ (var-get next-transaction-id) u1))
+        (ok true)
+    )
+)
+
+;; Read property details
+(define-read-only (get-property-details (property-id uint))
+    (map-get? properties { property-id: property-id })
+)
+
+;; Verify property ownership
+(define-read-only (verify-ownership (property-id uint) (owner principal))
+    (let
+        ((property (unwrap! (map-get? properties { property-id: property-id }) ERR-PROPERTY-NOT-FOUND)))
+        (ok (is-eq (get owner property) owner))
+    )
+)
+
+;; Get property history
+(define-read-only (get-property-history (property-id uint))
+    (filter map-get? property-history
+        (map unwrap-panic
+            (map (lambda (id) (some { property-id: property-id, transaction-id: id }))
+                (list u1 u2 u3 u4 u5) ;; Limited to last 5 transactions for example
+            )
+        )
+    )
+)
