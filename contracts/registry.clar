@@ -102,3 +102,17 @@
         (ok true)
     )
 )
+
+;; Read property details
+(define-read-only (get-property-details (property-id uint))
+    (map-get? properties { property-id: property-id })
+)
+
+;; Verify property ownership
+(define-read-only (verify-ownership (property-id uint) (owner principal))
+    (let
+        ((property (unwrap! (map-get? properties { property-id: property-id }) ERR-PROPERTY-NOT-FOUND)))
+        (ok (is-eq (get owner property) owner))
+    )
+)
+
