@@ -116,3 +116,13 @@
     )
 )
 
+;; Get property history
+(define-read-only (get-property-history (property-id uint))
+    (filter map-get? property-history
+        (map unwrap-panic
+            (map (lambda (id) (some { property-id: property-id, transaction-id: id }))
+                (list u1 u2 u3 u4 u5) ;; Limited to last 5 transactions for example
+            )
+        )
+    )
+)
